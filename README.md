@@ -20,12 +20,30 @@
    - **ОТВЕТ:** *пример показан в консольном приложении, по команде* **start**. *По адресу 127.0.0.1:8080/ доступны методы GET, POST для /message, /topic (Producer/Consumer и Publish/Subscribe соответственно). Метод POST пишет в "PRODUCER/PUBLISHER" (сервис читает его, модифицирует и пишет в "COMSUMER/SUBSCRIBER"); метод GET читает из "COMSUMER/SUBSCRIBER".*
 
 3. Показать и настроить варианты предоставляемые MOM, связанные с:
-   * подтверждением доставки/обработки сообщений клиентом (Message Acknowledgment), 
-   * сохранности очереди сообщений (Message Persistence - Durable queue), 
-   * время пребывания сообщения в очереди (Message TTL), 
+   * подтверждением доставки/обработки сообщений клиентом (Message Acknowledgment);
+   * сохранности очереди сообщений (Message Persistence - Durable queue);
+   * время пребывания сообщения в очереди (Message TTL);
    * максимальная длина очереди (Max length) (что происходит с сообщениями когда очередь заполнена).
 
-   -  **ОТВЕТ:** в процессе..
+
+    - **ОТВЕТЫ:**
+
+    `rabbit.queue.Messages = 2 // count of messages not awaiting acknowledgment`
+
+```
+    rabbit.queue, err = rabbit.channel.QueueDeclare(
+		rabbit.QueueName, // name
+		false,            // durable
+		false,            // delete when unused
+		false,            // exclusive
+		false,            // no-wait
+		amqp.Table{ // arguments
+			"x-message-ttl": int32(60000), // Declares a queue with the x-message-ttl extension
+			// to exercise integer serialization. 60 sec.)
+			"x-max-length": 10, // Maximum number of messages can be set
+			// by supplying the `x-max-length` queue declaration argument with a non-negative integer value.
+		})
+```
 
 4. Для варианта **Producer/Consumer** показать случай, когда *Consumer* берет из очереди сообщение на обработку, но не может его обработать: падает/не возвращает Ack/возвращает негативный Ack. Показать, будет ли при этом данное необработанное сообщение взято на обработку другим *Consumer* или окажется потерянным.
 

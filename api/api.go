@@ -41,7 +41,7 @@ func New() *Service {
 	srv.HidePort = true
 
 	srv.POST("/message", srv.produce)
-	srv.GET("/massage", srv.consume)
+	srv.GET("/message", srv.consume)
 
 	srv.POST("/topic", srv.publish)
 	srv.GET("/topic", srv.subscribe)

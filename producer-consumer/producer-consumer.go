@@ -14,46 +14,57 @@ import (
 type Rabbit struct {
 	QueueName     string
 	ServerAddress string
-	Consumer      string
+
+	channel *amqp.Channel
+	queue   amqp.Queue
 }
 
 func New(name string) *Rabbit {
-	return &Rabbit{
-		QueueName:     name,
-		ServerAddress: "amqp://guest:guest@localhost:5672/",
-		Consumer:      "",
+	rabbit := &Rabbit{
+		QueueName: name,
+		// ServerAddress: "amqp://guest:guest@localhost:5672/",
+		ServerAddress: "amqp://vwaqpldk:9Z97UAS6P7dGFY84oHxTDryrijrMHl2S@roedeer.rmq.cloudamqp.com/vwaqpldk",
 	}
-}
-
-func (rabbit *Rabbit) Send(request *forms.Message) error {
 	conn, err := amqp.Dial(rabbit.ServerAddress)
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
-	ch, err := conn.Channel()
+	rabbit.channel, err = conn.Channel()
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
-	q, err := ch.QueueDeclare(
+	rabbit.queue, err = rabbit.channel.QueueDeclare(
 		rabbit.QueueName, // name
 		false,            // durable
 		false,            // delete when unused
 		false,            // exclusive
 		false,            // no-wait
-		nil,              // arguments
+		nil,
+	// amqp.Table{ // arguments
+	// 	"x-message-ttl": int32(60000), // Declares a queue with the x-message-ttl extension
+	// 	// to exercise integer serialization. 60 sec.)
+	// 	"x-max-length": 10, // Maximum number of messages can be set
+	// 	// by supplying the `x-max-length` queue declaration argument with a non-negative integer value.
+	// },
 	)
+	// rabbit.queue.Messages = 2 // count of messages not awaiting acknowledgment (#1)
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
+	return rabbit
+}
+
+func (rabbit *Rabbit) Send(request *forms.Message) error {
+
 	body, err := json.Marshal(request)
 	if err != nil {
 		return err
 	}
-	err = ch.Publish(
-		"",     // exchange
-		q.Name, // routing key
-		false,  // mandatory
-		false,  // immediate
+	err = rabbit.channel.Publish(
+		"",                // exchange
+		rabbit.queue.Name, // routing key
+		false,             // mandatory
+		false,             // immediate
 		amqp.Publishing{
 			ContentType: "application/json",
 			Body:        []byte(body),
@@ -65,33 +76,14 @@ func (rabbit *Rabbit) Send(request *forms.Message) error {
 }
 
 func (rabbit *Rabbit) Receive() (<-chan amqp.Delivery, error) {
-	conn, err := amqp.Dial(rabbit.ServerAddress)
-	if err != nil {
-		return nil, err
-	}
-	ch, err := conn.Channel()
-	if err != nil {
-		return nil, err
-	}
-	q, err := ch.QueueDeclare(
-		rabbit.QueueName, // name
-		false,            // durable
-		false,            // delete when unused
-		false,            // exclusive
-		false,            // no-wait
-		nil,              // arguments
-	)
-	if err != nil {
-		return nil, err
-	}
-	return ch.Consume(
-		q.Name, // queue
-		"",     // consumer
-		true,   // auto-ack
-		false,  // exclusive
-		false,  // no-local
-		false,  // no-wait
-		nil,    // args
+	return rabbit.channel.Consume(
+		rabbit.queue.Name, // queue
+		"",                // consumer
+		true,              // auto-ack
+		false,             // exclusive
+		false,             // no-local
+		false,             // no-wait
+		nil,               // args
 	)
 }
 
@@ -111,7 +103,7 @@ func Daemon() {
 			counter++
 			req := new(forms.Message)
 			json.Unmarshal(d.Body, req)
-			req.Nonce = fmt.Sprintf("PRODUCER-COMSUMER Daemon like it #%d", counter)
+			req.Nonce = fmt.Sprintf("PRODUCER-COMSUMER Daemon #%d", counter)
 			responses.Send(req)
 		}
 	}()

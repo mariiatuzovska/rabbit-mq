@@ -14,27 +14,30 @@ import (
 type Rabbit struct {
 	ExchangeName  string
 	ServerAddress string
-	Consumer      string
+
+	channel *amqp.Channel
+	queue   amqp.Queue
 }
 
 func New(name string) *Rabbit {
-	return &Rabbit{
-		ExchangeName:  name,
-		ServerAddress: "amqp://guest:guest@localhost:5672/",
-		Consumer:      "",
+	rabbit := &Rabbit{
+		ExchangeName: name,
+		// ServerAddress: "amqp://guest:guest@localhost:5672/",
+		ServerAddress: "amqp://vwaqpldk:9Z97UAS6P7dGFY84oHxTDryrijrMHl2S@roedeer.rmq.cloudamqp.com/vwaqpldk",
 	}
-}
-
-func (rabbit *Rabbit) Send(request *forms.Topic) error {
 	conn, err := amqp.Dial(rabbit.ServerAddress)
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
-	ch, err := conn.Channel()
+	err = conn.Config.Properties.Validate()
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
-	err = ch.ExchangeDeclare(
+	rabbit.channel, err = conn.Channel()
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = rabbit.channel.ExchangeDeclare(
 		rabbit.ExchangeName, // name
 		"topic",             // type
 		true,                // durable
@@ -44,13 +47,39 @@ func (rabbit *Rabbit) Send(request *forms.Topic) error {
 		nil,                 // arguments
 	)
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
+	rabbit.queue, err = rabbit.channel.QueueDeclare(
+		"",    // name
+		false, // durable
+		false, // delete when unused
+		true,  // exclusive
+		false, // no-wait
+		nil,   // arguments
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = rabbit.channel.QueueBind(
+		rabbit.queue.Name,   // queue name
+		"",                  // routing key
+		rabbit.ExchangeName, // exchange
+		false,
+		nil,
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return rabbit
+}
+
+func (rabbit *Rabbit) Send(request *forms.Topic) error {
 	body, err := json.Marshal(request)
 	if err != nil {
 		return err
 	}
-	err = ch.Publish(
+	err = rabbit.channel.Publish(
 		rabbit.ExchangeName, // exchange
 		"",                  // routing key
 		false,               // mandatory
@@ -62,61 +91,18 @@ func (rabbit *Rabbit) Send(request *forms.Topic) error {
 	if err != nil {
 		return err
 	}
-	log.Printf(" [x] Sent %s", body)
 	return nil
 }
 
 func (rabbit *Rabbit) Receive() (<-chan amqp.Delivery, error) {
-	conn, err := amqp.Dial(rabbit.ServerAddress)
-	if err != nil {
-		return nil, err
-	}
-	ch, err := conn.Channel()
-	if err != nil {
-		return nil, err
-	}
-	err = ch.ExchangeDeclare(
-		rabbit.ExchangeName, // name
-		"topic",             // type
-		true,                // durable
-		false,               // auto-deleted
-		false,               // internal
-		false,               // no-wait
-		nil,                 // arguments
-	)
-	if err != nil {
-		return nil, err
-	}
-	q, err := ch.QueueDeclare(
-		"",    // name
-		false, // durable
-		false, // delete when unused
-		true,  // exclusive
-		false, // no-wait
-		nil,   // arguments
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	err = ch.QueueBind(
-		q.Name,              // queue name
-		"",                  // routing key
-		rabbit.ExchangeName, // exchange
-		false,
-		nil,
-	)
-	if err != nil {
-		return nil, err
-	}
-	return ch.Consume(
-		q.Name,          // queue
-		rabbit.Consumer, // consumer
-		true,            // auto-ack
-		false,           // exclusive
-		false,           // no-local
-		false,           // no-wait
-		nil,             // args
+	return rabbit.channel.Consume(
+		rabbit.queue.Name, // queue
+		"",                // consumer
+		true,              // auto-ack
+		false,             // exclusive
+		false,             // no-local
+		false,             // no-wait
+		nil,               // args
 	)
 }
 
@@ -136,7 +122,7 @@ func Daemon() {
 			counter++
 			req := new(forms.Topic)
 			json.Unmarshal(d.Body, req)
-			req.Nonce = fmt.Sprintf("PUBLISH-SUBSCRIBE Daemon like it #%d", counter)
+			req.Nonce = fmt.Sprintf("PUBLISH-SUBSCRIBE Daemon #%d", counter)
 			responses.Send(req)
 		}
 	}()
