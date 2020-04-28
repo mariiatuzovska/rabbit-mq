@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/mariiatuzovska/rabbit-mq/api"
 	"github.com/mariiatuzovska/rabbit-mq/api/forms"
@@ -16,8 +17,6 @@ import (
 var (
 	ServiceName = "rabbit-mq"
 	Version     = "0.0.1"
-
-	ServerAddress = "amqp://guest:guest@localhost:5672/"
 )
 
 func main() {
@@ -34,8 +33,8 @@ func main() {
 			Usage: "starting as api service",
 			Action: func(c *cli.Context) error {
 				srv := api.New()
-				go ps.Daemon()
-				go pc.Daemon()
+				go ps.Daemon("PUBLISHER", "SUBSCRIBER")
+				go pc.Daemon("PRODUCER", "COMSUMER")
 				return srv.Start(fmt.Sprintf("127.0.0.1:%s", c.String("p")))
 			},
 			Flags: []cli.Flag{
@@ -44,6 +43,73 @@ func main() {
 					Usage: "port",
 					Value: "8080",
 				},
+			},
+		},
+		{
+			Name:  "bad-ack-example",
+			Usage: "PRODUCER-CONSUMER example with bad ack",
+			Action: func(c *cli.Context) error {
+
+				producer := pc.New("P")
+				badConsumer := pc.New("FIRST")
+				goodConsumer := pc.New("SECOND")
+
+				// background process
+				badConsumerMSGS, err := badConsumer.Receive()
+				if err != nil {
+					log.Fatal(err)
+				}
+				goodConsumerMSGS, err := goodConsumer.Receive()
+				if err != nil {
+					log.Fatal(err)
+				}
+				forever := make(chan bool)
+				go func() {
+					for d := range badConsumerMSGS {
+						req := new(forms.Message)
+						json.Unmarshal(d.Body, req)
+						log.Printf("Received a message from FIRST cunsumer: %s", req.Text)
+					}
+				}()
+				go func() {
+					for d := range goodConsumerMSGS {
+						req := new(forms.Message)
+						json.Unmarshal(d.Body, req)
+						log.Printf("Received a message from SECOND cunsumer: %s", req.Text)
+					}
+				}()
+
+				log.Printf(" [*] Waiting for messages. To exit press OPTION+C")
+
+				// try to make bad ack
+				go pc.DaemonWithException("P", "FIRST")
+				go pc.Daemon("P", "SECOND")
+
+				time.Sleep(time.Duration(5) * time.Second)
+
+				err = producer.Send(forms.NewMessage("1-th message"))
+				log.Println(1, err)
+				err = producer.Send(forms.NewMessage("2-th message"))
+				log.Println(2, err)
+				err = producer.Send(forms.NewMessage("3-th message"))
+				log.Println(3, err)
+				err = producer.Send(forms.NewMessage("4-th message"))
+				log.Println(4, err)
+				err = producer.Send(forms.NewMessage("5-th message"))
+				log.Println(5, err)
+
+				time.Sleep(time.Duration(10) * time.Second)
+
+				err = producer.Send(forms.NewMessage("6-th message"))
+				log.Println(6, err)
+				err = producer.Send(forms.NewMessage("7-th message"))
+				log.Println(7, err)
+				err = producer.Send(forms.NewMessage("8-th message"))
+				log.Println(8, err)
+
+				<-forever
+
+				return nil
 			},
 		},
 		{

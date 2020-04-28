@@ -106,11 +106,11 @@ func (rabbit *Rabbit) Receive() (<-chan amqp.Delivery, error) {
 	)
 }
 
-func Daemon() {
+func Daemon(reqestor, responser string) {
 
 	forever := make(chan bool)
 
-	requests, responses := New("PUBLISHER"), New("SUBSCRIBER")
+	requests, responses := New(reqestor), New(responser)
 	msgs, err := requests.Receive()
 	if err != nil {
 		log.Fatal(err)
@@ -122,11 +122,11 @@ func Daemon() {
 			counter++
 			req := new(forms.Topic)
 			json.Unmarshal(d.Body, req)
-			req.Nonce = fmt.Sprintf("PUBLISH-SUBSCRIBE Daemon #%d", counter)
+			req.Nonce = fmt.Sprintf("%s-%s Daemon #%d", reqestor, responser, counter)
 			responses.Send(req)
 		}
 	}()
-	log.Printf(" [*] PUBLISH-SUBSCRIBE Daemon waiting for messages...")
+	log.Printf(fmt.Sprintf(" [*] %s-%s Daemon waiting for messages...", reqestor, responser))
 
 	for {
 		<-forever

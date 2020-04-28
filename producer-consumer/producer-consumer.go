@@ -35,10 +35,10 @@ func New(name string) *Rabbit {
 	}
 	rabbit.queue, err = rabbit.channel.QueueDeclare(
 		rabbit.QueueName, // name
-		false,            // durable
+		true,             // durable
 		false,            // delete when unused
 		false,            // exclusive
-		false,            // no-wait
+		true,             // no-wait
 		nil,
 	// amqp.Table{ // arguments
 	// 	"x-message-ttl": int32(60000), // Declares a queue with the x-message-ttl extension
@@ -47,7 +47,8 @@ func New(name string) *Rabbit {
 	// 	// by supplying the `x-max-length` queue declaration argument with a non-negative integer value.
 	// },
 	)
-	// rabbit.queue.Messages = 2 // count of messages not awaiting acknowledgment (#1)
+
+	rabbit.queue.Messages = 2 // count of messages not awaiting acknowledgment (#1)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -82,16 +83,16 @@ func (rabbit *Rabbit) Receive() (<-chan amqp.Delivery, error) {
 		true,              // auto-ack
 		false,             // exclusive
 		false,             // no-local
-		false,             // no-wait
+		true,              // no-wait
 		nil,               // args
 	)
 }
 
-func Daemon() {
+func Daemon(reqestor, responser string) {
 
 	forever := make(chan bool)
 
-	requests, responses := New("PRODUCER"), New("COMSUMER")
+	requests, responses := New(reqestor), New(responser)
 	msgs, err := requests.Receive()
 	if err != nil {
 		log.Fatal(err)
@@ -99,18 +100,55 @@ func Daemon() {
 
 	go func() {
 		var counter int = 0
+		// time.Sleep(time.Duration(15) * time.Second)
 		for d := range msgs {
 			counter++
 			req := new(forms.Message)
 			json.Unmarshal(d.Body, req)
-			req.Nonce = fmt.Sprintf("PRODUCER-COMSUMER Daemon #%d", counter)
+			req.Nonce = fmt.Sprintf("%s-%s Daemon #%d", reqestor, responser, counter)
 			responses.Send(req)
 		}
 	}()
-	log.Printf(" [*] PRODUCER-COMSUMER Daemon waiting for messages...")
+	log.Printf(fmt.Sprintf(" [*] %s-%s Daemon waiting for messages...", reqestor, responser))
 
 	for {
 		<-forever
+	}
+
+}
+
+func DaemonWithException(reqestor, responser string) {
+
+	exit := make(chan bool)
+
+	requests, responses := New(reqestor), New(responser)
+	msgs, err := requests.Receive()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	go func(a, b string, exit chan bool) {
+		var counter int = 0
+		for d := range msgs {
+			counter++
+			exit <- false
+			req := new(forms.Message)
+			json.Unmarshal(d.Body, req)
+			if counter == 3 {
+				exit <- true
+			}
+			req.Nonce = fmt.Sprintf("%s-%s Daemon #%d", a, b, counter)
+			responses.Send(req)
+		}
+	}(reqestor, responser, exit)
+
+	log.Printf(fmt.Sprintf(" [*] %s-%s Daemon waiting for messages...", reqestor, responser))
+
+	for {
+		end := <-exit
+		if end {
+			break
+		}
 	}
 
 }

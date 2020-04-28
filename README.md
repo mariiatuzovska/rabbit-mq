@@ -25,15 +25,12 @@
    * время пребывания сообщения в очереди (Message TTL);
    * максимальная длина очереди (Max length) (что происходит с сообщениями когда очередь заполнена).
 
-
-    - **ОТВЕТЫ:**
-
     `rabbit.queue.Messages = 2 // count of messages not awaiting acknowledgment`
 
 ```
     rabbit.queue, err = rabbit.channel.QueueDeclare(
 		rabbit.QueueName, // name
-		false,            // durable
+		true,            // durable
 		false,            // delete when unused
 		false,            // exclusive
 		false,            // no-wait
@@ -47,4 +44,37 @@
 
 4. Для варианта **Producer/Consumer** показать случай, когда *Consumer* берет из очереди сообщение на обработку, но не может его обработать: падает/не возвращает Ack/возвращает негативный Ack. Показать, будет ли при этом данное необработанное сообщение взято на обработку другим *Consumer* или окажется потерянным.
 
-   -  **ОТВЕТ:** в процессе..
+   -  **ОТВЕТ:** *пример показан в консольном приложении, по команде* **bad-ack-example**. Сообщения будут утеряны/не утеряны в зависимости от настройки очереди/соединения. 
+
+
+## Консольное приложение 
+
+```
+NAME:
+   rabbit-mq - Example of message publisher & message consumer for RabbitMQ
+
+USAGE:
+   cmd [global options] command [command options] [arguments...]
+
+VERSION:
+   0.0.1
+
+AUTHOR:
+   Tuzovska Mariia
+
+COMMANDS:
+   start            starting as api service
+   bad-ack-example  PRODUCER-CONSUMER example with bad ack
+   pc-send          PRODUCER-CONSUMER send (point-to-point)
+   pc-receive       PRODUCER-CONSUMER receive (point-to-point)
+   ps-send          PUBLISH-SUBSCRIBE publish (topic)
+   ps-receive       PUBLISH-SUBSCRIBE receive (topic)
+   help, h          Shows a list of commands or help for one command
+
+GLOBAL OPTIONS:
+   --help, -h     show help
+   --version, -v  print the version
+
+COPYRIGHT:
+   2020, mariiatuzovska
+```
